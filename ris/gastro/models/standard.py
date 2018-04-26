@@ -30,7 +30,7 @@ def find_best_model(X_train, X_test, y_train, y_test):
 
 
 def run_all(show_happy_faces=False):
-    X_train, X_test, y_train, y_test, tfidf_vectorizer = collection.get_prepared_gata()
+    X_train, X_test, y_train, y_test, tfidf_vectorizer = get_prepared_gata()
 
     clfs = {
         'MultinomialNB': MultinomialNB(),
