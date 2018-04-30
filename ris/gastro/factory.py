@@ -1,5 +1,6 @@
 import bedrock
-from ris.gastro.models.standard import bnb
+from models.standard import bnb
+
 import dill
 from configparser import ConfigParser
 
@@ -57,7 +58,7 @@ def train_model(model_name, train_test_data, persist_path=None):
 
 
 def run():
-    print('GO GO GO!')
+    print('Creating gastro model')
     with open(config['DEFAULT']['sentence_tokenizer'], 'wb') as f:
         dill.dump(to_sentences, f)
 
