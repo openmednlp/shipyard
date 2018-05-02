@@ -8,10 +8,12 @@ config.read('config.ini')
 
 
 def to_sentences(text):
+    import bedrock
     return bedrock.process.sentence_tokenize(text)
 
 
 def text_process_pipeline(sentences):
+    import bedrock
     processed = bedrock.process.lemmatize(sentences)
     processed = bedrock.process.remove_short(processed, 5)
     return processed
