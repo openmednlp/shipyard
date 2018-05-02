@@ -8,6 +8,20 @@ config = ConfigParser()
 config.read('config.ini')
 
 
+def extract_impression(text):
+    import bedrock
+    text_lines = text.splitlines()
+    header_text = 'Beurteilung'
+    labels = bedrock.collection.section_label(text_lines, [header_text])
+    impression_lines = [
+        text_lines[idx]
+        for idx, l
+        in enumerate(labels)
+        if (l != 'n/a') and ('header' not in l.lower())
+    ]
+    return ''.join(impression_lines)
+
+
 def to_sentences(text):
     import bedrock
     return bedrock.process.sentence_tokenize(text)
@@ -60,6 +74,9 @@ def train_model(model_name, train_test_data, persist_path=None):
 
 
 def run():
+    with open(config['DEFAULT']['impression_extractor'], 'wb') as f:
+        dill.dump(extract_impression, f)
+
     print('Creating gastro model')
     with open(config['DEFAULT']['sentence_tokenizer'], 'wb') as f:
         dill.dump(to_sentences, f)
