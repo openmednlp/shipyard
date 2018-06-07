@@ -39,7 +39,7 @@ def crawl_reports(dir_path='/home/giga/dev/python/shipyard/ris/cranial/data'):
 
 def load_data(csv_path):
     import pandas as pd
-    df = pd.read_csv(csv_path, encoding='utf-8')
+    df = pd.read_csv(csv_path, encoding='utf-8', low_memory=False)
     return df
 
 

@@ -129,19 +129,8 @@ def tpot_models(X_train, X_test, y_train, y_test, target_column, persist_path=No
     bedrock.common.save_pickle(pipeline, persist_path)
 
 
-def model_testing(
-        x,
-        y,
-        label_name,
-        corpus_size,
-        seed=42,
-        splits=10,
-        repeats=20):
-    # TODO: Trying to disable a warning that is out of my control
-    import pandas as pd
-    pd.options.mode.chained_assignment = None
-
-    models = {
+def get_model_map():
+    return {
         'BernoulliNB': make_pipeline(
             TfidfVectorizer(),
             BernoulliNB()
@@ -156,11 +145,25 @@ def model_testing(
         ),
         'ExtraTreesClassifier': make_pipeline(
             TfidfVectorizer(),
-             ExtraTreesClassifier()
+            ExtraTreesClassifier()
         )
     }
 
-    all_models = models  # {**models, **tpot_pipelines}
+def model_testing(
+        x,
+        y,
+        label_name,
+        corpus_size,
+        seed=42,
+        splits=10,
+        repeats=20):
+    # TODO: Trying to disable a warning that is out of my control
+    import pandas as pd
+    pd.options.mode.chained_assignment = None
+
+    model_map = get_model_map()
+
+    all_models = model_map  # {**model_map, **tpot_pipelines}
 
     scoring = ['accuracy', 'f1', 'precision', 'recall']
     # results = []
@@ -192,7 +195,7 @@ def model_testing(
             y,
             cv=kfold,
             scoring=scoring,
-            return_train_score=False
+            return_train_score=False,
         )
 
         #cv_results = cross_val_score(model, x, y, cv=kfold, scoring=scoring)
