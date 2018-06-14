@@ -107,11 +107,102 @@ def run_linear_svm(csv_path, row_limit):
     df_res.to_csv('output/linear_svm_predicted_result.csv')
 
 
-def run_document_lod(csv_path):
-    df = pd.read_csv(csv_path, encoding='utf-8', low_memory=False)
-    df_grouped = df.groupby('accession_id').any()
-    return df_grouped
+def cv_by_field(df, fold_count, field, reset_index=False):
+    from random import shuffle
 
+    if reset_index:
+        df = df.reset_index()
+
+    df_grouped = df.groupby(field)
+    distinct_field_values = list(df_grouped.groups.keys())
+
+    # group_max_targets = list(df_grouped[target_field].max())
+
+    shuffle(distinct_field_values)
+
+    field_value_folds = [
+        distinct_field_values[idx::fold_count]
+        for idx
+        in range(fold_count)
+    ]
+
+    index_folds = []
+    for fold in field_value_folds:
+        df_fold_indices = [
+            idx
+            for fv
+            in fold
+            for idx
+            in df[df[field] == fv].index.values
+        ]
+
+        index_folds.append(df_fold_indices)
+
+    train_fold_ids = []
+    test_fold_ids = []
+
+    for fold_test_idx in range(fold_count):
+        train_folds = [
+            idx
+            for fold_idx
+            in range(fold_count)
+            if fold_idx != fold_test_idx
+            for idx
+            in index_folds[fold_idx]
+        ]
+        train_fold_ids.append(train_folds)
+
+        test_fold = [idx for idx in index_folds[fold_test_idx]]
+        test_fold_ids.append(test_fold)
+
+    return train_fold_ids, test_fold_ids
+
+
+def run_linear_svm_doc_level(csv_path, row_limit):
+    df_all = csv_to_dataset(csv_path)
+    df_limited = limit_df(df_all, row_limit)
+    models = []
+
+
+    split_by_field  = 'accession_id'
+
+
+    import bedrock
+
+
+    df_res = df_all
+    for target_column, target_sections in zip(target_columns, target_sections_map):
+        print(':: ' + target_column + ' ::')
+
+        x, y, x_val, y_val = bedrock.collection.train_validate_split_df(
+            df_limited, 'sentence', target_column, 'accession_id', test_size=0.1
+        )
+
+        x, y = get_x_and_y(df_train, target_column, target_sections)
+
+        # Train model
+        linearsvm = get_model_map()['LinearSVC']
+        model = linearsvm.fit(x,y)
+        models.append(model)
+
+        # Predict
+        df_filtered = df_all[df_all['section_id'].isin(target_sections)]
+        df_filtered_mapped = map_label(df_filtered, target_column)
+
+        x_all = df_filtered_mapped['sentence']
+        y_hat = model.predict(x_all)
+
+        df_filtered_mapped['predicted_'+target_column] = y_hat
+        df_res = pd.concat([df_res, df_filtered_mapped['predicted_'+target_column]], axis=1)
+
+    df_res.to_csv('output/linear_svm_doc_level.csv')
+
+
+def run_document_lod(input_csv_path, output_csv_path='output/lod_doc.csv'):
+    df = pd.read_csv(input_csv_path, encoding='utf-8', low_memory=False)
+    df_grouped = df.groupby('accession_id').any()
+    df_grouped.to_csv(output_csv_path)
+    return df_grouped
 
 
 def run_classificators(df):
@@ -171,7 +262,19 @@ if __name__ == '__main__':
     # )
 
     # run_linear_svm(csv_path, 8008)
-    run_document_lod('output/linear_svm_predicted_result.csv')
+    # run_document_lod('output/linear_svm_predicted_result.csv', 'output/lod_doc.csv')
+
+
+    # run_linear_svm_doc_level(csv_path, 8008)
+
+    df = pd.DataFrame(
+        {
+            'a': [1, 2, 2, 3, 3, 3, 4, 4, 4, 4, 5, 5, 5, 5, 5],
+            'b': [11, 22, 22, 33, 33, 33, 44, 44, 44, 44, 55, 55, 55, 55, 55]
+        }
+    )
+    cv_by_field(df, 3, 'a')
+
 
     # sentences = df['sentence']
     # import viz
@@ -179,4 +282,5 @@ if __name__ == '__main__':
     # tokenized_sentences = [s.split() for s in sentences if len(s)>5]
     # x_w2v, words = embeddings.word2vec(tokenized_sentences)
     # viz.tsne_run(x_w2v)
+
 

@@ -190,7 +190,8 @@ def model_testing(
     for key in all_models.keys():
         print(key)
         model = all_models[key]
-        if cv==None:
+
+        if cv == None:
             # repeated kfold
             cv = RepeatedKFold(n_splits=splits, n_repeats=repeats, random_state=seed)
         cv_results = cross_validate(
