@@ -149,6 +149,7 @@ def get_model_map():
         )
     }
 
+
 def model_testing(
         x,
         y,
@@ -156,7 +157,8 @@ def model_testing(
         corpus_size,
         seed=42,
         splits=10,
-        repeats=20):
+        repeats=20,
+        cv=None):
     # TODO: Trying to disable a warning that is out of my control
     import pandas as pd
     pd.options.mode.chained_assignment = None
@@ -188,12 +190,14 @@ def model_testing(
     for key in all_models.keys():
         print(key)
         model = all_models[key]
-        kfold = RepeatedKFold(n_splits=splits, n_repeats=repeats, random_state=seed)
+        if cv==None:
+            # repeated kfold
+            cv = RepeatedKFold(n_splits=splits, n_repeats=repeats, random_state=seed)
         cv_results = cross_validate(
             model,
             x,
             y,
-            cv=kfold,
+            cv=cv,
             scoring=scoring,
             return_train_score=False,
         )
