@@ -36,33 +36,40 @@ def spacy_stuff():
     ]
 
 
+from sklearn.model_selection import GroupKFold
 def run_test_models(csv_path, min_row_count, max_row_limit, interval, splits, repeats):
     import viz
     overall_result_df = pd.DataFrame()
     df_all = csv_to_dataset(csv_path, max_row_limit)
-    for row_limit in range(min_row_count, max_row_limit+1, interval):
+    subsample_sizes = range(min_row_count, max_row_limit + 1, interval)
+    for row_limit in subsample_sizes:
         df = limit_df(df_all, row_limit)
         for target_column, label_target_sections in zip(target_columns, target_sections_map):
             print(':: ' + target_column + ' ::')
 
             #x, x_test, y, y_test = get_data(df, target_column, target_section)
 
-            x, y = get_x_and_y(df, target_column, label_target_sections)
-
+            df_filtered = filter_df_by_sections(df, target_column, label_target_sections)
+            x = df_filtered['sentence']
+            y = df_filtered[target_column]
+            groups = df_filtered['accession_id']
             # TODO make it 1/0 split istead of 0.7/03
             #x_vec, x_vec_test, y_vec, y_vec_test = vectorize_dataset(x, x_test, y, y_test, stratify=False)
             # from scipy.sparse import vstack
             # x_vec_both = vstack((x_vec, x_vec_test))
             # y_vec_both = y_vec.append(y_vec_test)
 
+            cv = GroupKFold(splits)
+            # cv = DataFrameCV(df_filtered, 'accession_id', n_splits=10)
+
             test_results_df = model_testing(
                 x,
                 y,
+                groups,
                 label_name=target_column,
                 corpus_size=row_limit,
-                splits=splits,
-                repeats=repeats
-            )
+                cv=cv)
+
             overall_result_df = overall_result_df.append(test_results_df)
 
             header_template = 'Algorithm comparison | Label: {} | Corpus size: {}'
@@ -78,6 +85,24 @@ def run_test_models(csv_path, min_row_count, max_row_limit, interval, splits, re
     overall_result_df.to_csv('output/result.csv')
 
 
+import viz
+def vizardry():
+    df = pd.read_csv('output/result.csv') #,  dtype={'accuracy_scores': np.})
+    df['accuracy_scores'] = df['accuracy_scores'].astype(np.ndarray).apply(lambda x: eval(x))
+    df_group = df.groupby('model')
+    print(df_group)
+    for name, g in df_group:
+         viz.box_plot(
+             g['corpus_size'].values,
+             results=g['accuracy_scores'].values,
+             header=name,
+             show_plot=True,
+             persist=False
+         )
+
+
+
+
 def run_linear_svm(csv_path, row_limit):
     df_all = csv_to_dataset(csv_path)
     df_train = limit_df(df_all, row_limit)
@@ -87,7 +112,9 @@ def run_linear_svm(csv_path, row_limit):
     for target_column, target_sections in zip(target_columns, target_sections_map):
         print(':: ' + target_column + ' ::')
 
-        x, y = get_x_and_y(df_train, target_column, target_sections)
+        df_filtered = filter_df_by_sections(df_train, target_column, target_sections)
+        x = df_filtered['sentence']
+        y = df_filtered[target_column]
 
         # Train model
         linearsvm = get_model_map()['LinearSVC']
@@ -150,12 +177,14 @@ def cv_by_field(df, fold_count, field, reset_index=False):
             for idx
             in index_folds[fold_idx]
         ]
-        train_fold_ids.append(train_folds)
+        train_fold_ids.append(np.ndarray(train_folds))
 
         test_fold = [idx for idx in index_folds[fold_test_idx]]
-        test_fold_ids.append(test_fold)
+        test_fold_ids.append(np.ndarray(test_fold))
 
     return train_fold_ids, test_fold_ids
+
+
 
 
 def run_linear_svm_doc_level(csv_path, row_limit):
@@ -178,7 +207,9 @@ def run_linear_svm_doc_level(csv_path, row_limit):
             df_limited, 'sentence', target_column, 'accession_id', test_size=0.1
         )
 
-        x, y = get_x_and_y(df_train, target_column, target_sections)
+        df_filtered = filter_df_by_sections(df, target_column, target_sections)
+        x = df_filtered['sentence']
+        y = df_filtered[target_column]
 
         # Train model
         linearsvm = get_model_map()['LinearSVC']
@@ -242,6 +273,85 @@ def run_regex(df):
 
     comp_df.to_csv('comparison.csv')
 
+from sklearn.model_selection._split import _BaseKFold
+
+
+class DataFrameCV(_BaseKFold):
+    def __init__(self, df, split_field, n_splits, random_state=None, shuffle=False):
+        super().__init__(n_splits, shuffle, random_state)
+        self.df = df
+        self.split_field = split_field
+        self.train_indices, self.test_indices = self.cv_by_field(
+            self.df,
+            fold_count=self.n_splits,
+            field=self.split_field,
+            reset_index=False
+        )
+
+
+    def cv_by_field(self, df, fold_count, field, reset_index=False):
+        from random import shuffle
+
+        if reset_index:
+            df = df.reset_index()
+
+        df_grouped = df.groupby(field)
+        distinct_field_values = list(df_grouped.groups.keys())
+
+        # group_max_targets = list(df_grouped[target_field].max())
+
+        shuffle(distinct_field_values)
+
+        field_value_folds = [
+            distinct_field_values[idx::fold_count]
+            for idx
+            in range(fold_count)
+        ]
+
+        index_folds = []
+        for fold in field_value_folds:
+            df_fold_indices = [
+                idx
+                for fv
+                in fold
+                for idx
+                in df[df[field] == fv].index.values
+            ]
+
+            index_folds.append(df_fold_indices)
+
+        train_fold_ids = []
+        test_fold_ids = []
+
+        for fold_test_idx in range(fold_count):
+            train_folds = [
+                idx
+                for fold_idx
+                in range(fold_count)
+                if fold_idx != fold_test_idx
+                for idx
+                in index_folds[fold_idx]
+            ]
+            train_fold_ids.append(train_folds)
+
+            test_fold = [idx for idx in index_folds[fold_test_idx]]
+            test_fold_ids.append(test_fold)
+
+        return train_fold_ids, test_fold_ids
+
+    def _iter_test_indices(self, X=None, y=None, groups=None):
+        test_indices = self.test_indices
+
+        for fold_test_indices in test_indices:
+            yield fold_test_indices
+
+    def _iter_test_masks(self, X=None, y=None, groups=None):
+        for test_index in self._iter_test_indices(X, y, groups):
+            # test_mask = np.zeros(len(X), dtype=np.bool)
+            # test_mask[test_index] = True
+            yield X.index.isin(test_index)
+
+
 
 if __name__ == '__main__':
     data_abs_path = '/home/giga/dev/python/shipyard/ris/cranial/data/csv/'
@@ -254,12 +364,13 @@ if __name__ == '__main__':
 
     # run_test_models(
     #     csv_path,
-    #     min_row_count=1008,
+    #     min_row_count=7008,
     #     max_row_limit=8008,
     #     interval=1000,
     #     splits=10,
     #     repeats=10
     # )
+    vizardry()
 
     # run_linear_svm(csv_path, 8008)
     # run_document_lod('output/linear_svm_predicted_result.csv', 'output/lod_doc.csv')
@@ -267,14 +378,16 @@ if __name__ == '__main__':
 
     # run_linear_svm_doc_level(csv_path, 8008)
 
-    df = pd.DataFrame(
-        {
-            'a': [1, 2, 2, 3, 3, 3, 4, 4, 4, 4, 5, 5, 5, 5, 5],
-            'b': [11, 22, 22, 33, 33, 33, 44, 44, 44, 44, 55, 55, 55, 55, 55]
-        }
-    )
-    cv_by_field(df, 3, 'a')
-
+    # df = pd.DataFrame(
+    #     {
+    #         'a': [1, 2, 2, 3, 3, 3, 4, 4, 4, 4, 5, 5, 5, 5, 5],
+    #         'b': [11, 22, 22, 33, 33, 33, 44, 44, 44, 44, 55, 55, 55, 55, 55]
+    #     }
+    # )
+    # tr,te = cv_by_field(df, 3, 'a')
+    #
+    # print(tr)
+    # print(te)
 
     # sentences = df['sentence']
     # import viz

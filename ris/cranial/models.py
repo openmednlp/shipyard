@@ -149,16 +149,30 @@ def get_model_map():
         )
     }
 
+import pandas as pd
+class DataFrameScorer:
+    def __init__(self, groups):
+        # groups is a df column on which you want to group by
+        self.groups = groups
+
+    def __call__(self, estimator, X, y, **kwargs):
+        df = pd.DataFrame({'X': X, 'y': y, 'group': self.groups})
+        df['predicted'] = estimator.fit(X)
+
+        f = {'predicted': ['max'], 'y': ['max']}
+        df_agg = df.groupby(['group']).agg(f)
+
+        correct = df_agg['predicted', 'max'] == df_agg['y', 'max']
+        return sum(correct)/len(correct)
+
 
 def model_testing(
         x,
         y,
+        groups,
         label_name,
         corpus_size,
-        seed=42,
-        splits=10,
-        repeats=20,
-        cv=None):
+        cv):
     # TODO: Trying to disable a warning that is out of my control
     import pandas as pd
     pd.options.mode.chained_assignment = None
@@ -167,7 +181,7 @@ def model_testing(
 
     all_models = model_map  # {**model_map, **tpot_pipelines}
 
-    scoring = ['accuracy', 'f1', 'precision', 'recall']
+    scoring = ['accuracy', 'f1', 'precision', 'recall']  # , DataFrameScorer(cv.df)]
     # results = []
     res = {
         'label': [],
@@ -191,9 +205,6 @@ def model_testing(
         print(key)
         model = all_models[key]
 
-        if cv == None:
-            # repeated kfold
-            cv = RepeatedKFold(n_splits=splits, n_repeats=repeats, random_state=seed)
         cv_results = cross_validate(
             model,
             x,
@@ -201,6 +212,7 @@ def model_testing(
             cv=cv,
             scoring=scoring,
             return_train_score=False,
+            groups=groups
         )
 
         #cv_results = cross_val_score(model, x, y, cv=kfold, scoring=scoring)

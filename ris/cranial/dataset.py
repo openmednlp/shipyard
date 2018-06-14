@@ -71,12 +71,12 @@ def limit_df(df, row_limit):
     return df
 
 
-def get_x_and_y(df, target_column, section_ids):
+def filter_df_by_sections(df, target_column, section_ids):
     if type(section_ids) == str:
         section_ids = [section_ids]
     df = df[df['section_id'].isin(section_ids)]
     df = map_label(df, target_column)
-    return df['sentence'], df[target_column]
+    return df
 
 
 def get_data(df, target_column, section_ids, test_size=0.7):

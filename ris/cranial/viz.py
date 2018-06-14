@@ -27,9 +27,8 @@ def tsne_run(x_w2v):
 def box_plot(names, results, header, show_plot=True, persist=False):
     # boxplot algorithm comparison
     fig = plt.figure()
-    fig.suptitle(header)
     ax = fig.add_subplot(111)
-    plt.boxplot(results)
+    plt.boxplot(results.tolist())
     ax.set_xticklabels(names)
     plt.xlabel('Algorithms') #TODO: not generalized name
     plt.xticks(rotation=45)
