@@ -1,5 +1,4 @@
 import pandas as pd
-import bedrock
 from configparser import ConfigParser
 import re
 from gensim.models.word2vec import Word2Vec
@@ -9,14 +8,17 @@ config.read('config.ini')
 
 
 def vectorize_dataset(x, x_val, y, y_val, stratify=False):
+    from bedrock.feature import train_tfidf_vectorizer
+    from bedrock.collection import balance_df
+
     train_df = pd.DataFrame({'x': x, 'y': y})
 
     if stratify:
-        balanced_train_df = bedrock.collection.balance_df(train_df, 'y')
+        balanced_train_df = balance_df(train_df, 'y')
         x = balanced_train_df['x']
         y = balanced_train_df['y']
 
-    vectorizer = bedrock.feature.train_tfidf_vectorizer(
+    vectorizer = train_tfidf_vectorizer(
         x,
         config['DEFAULT']['vectorizer']
     )
@@ -40,6 +42,8 @@ def regex_label_sentences(sentences, pattern_dict):
 
 
 def word2vec(sentences):
+    from gensim.models.word2vec import Word2Vec
+
     print('doing w2v')
     model = Word2Vec(sentences, workers=6, size=200, min_count=1, window=15, sample=1e-3)
     words = model.wv.vocab

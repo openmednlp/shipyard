@@ -62,7 +62,8 @@ def run_test_models(csv_path, min_row_count, max_row_limit, interval, splits, re
             # x_vec_both = vstack((x_vec, x_vec_test))
             # y_vec_both = y_vec.append(y_vec_test)
 
-            cv = GroupKFold(splits)
+            # cv = RepeatedKFold(2, 2, 42)
+            cv = GroupKFold(10)
             # cv = DataFrameCV(df_filtered, 'accession_id', n_splits=10)
 
             test_results_df = model_testing(
@@ -73,6 +74,17 @@ def run_test_models(csv_path, min_row_count, max_row_limit, interval, splits, re
                 corpus_size=row_limit,
                 cv=cv)
 
+            # cv = GroupKFold(10)
+            # group_results_df = accession_level_model_testing(
+            #     x,
+            #     y,
+            #     cv,
+            #     groups,
+            #     )
+
+            # test_results_df['gac_scores'] = group_results_df['gac_scores']
+            # test_results_df['gac_mean'] = group_results_df['gac_mean']
+
             overall_result_df = overall_result_df.append(test_results_df)
 
             header_template = 'Algorithm comparison | Label: {} | Corpus size: {}'
@@ -82,26 +94,36 @@ def run_test_models(csv_path, min_row_count, max_row_limit, interval, splits, re
                 test_results_df['accuracy_scores'],
                 viz_header,
                 show_plot=False,
-                persist=True
+                persist=True,
+                x_label='Algorithm',
+                y_label='Accuracy'
             )
 
     overall_result_df.to_csv('output/result.csv')
 
 
 import viz
-def vizardry():
+
+
+def vizardry(score_types=['accuracy_scores', 'f1_scores', 'gac_scores'], x_label='Number of segments', y_label=''):
     df = pd.read_csv('output/result.csv') #,  dtype={'accuracy_scores': np.})
-    df['accuracy_scores'] = df['accuracy_scores'].astype(np.ndarray).apply(lambda x: eval(x))
+
+    for score_type in score_types:
+        df[score_type] = df[score_type].astype(np.ndarray).apply(lambda x: eval(x))
+
     df_group = df.groupby(['model', 'label'])
     print(df_group)
     for name, g in df_group:
-         viz.box_plot(
-             g['corpus_size'].values,
-             results=g['accuracy_scores'].values,
-             header='{}_{}'.format(*name),
-             show_plot=False,
-             persist=True
-         )
+        for score_type in score_types:
+             viz.box_plot(
+                 g['corpus_size'].values,
+                 results=g[score_type].values,
+                 header='{}_{}_{}'.format(*name, score_type),
+                 show_plot=False,
+                 persist=True,
+                 x_label=x_label,
+                 y_label= y_label if y_label else score_type
+             )
 
 
 
@@ -262,7 +284,7 @@ class DataFrameCV(_BaseKFold):
 
 
 if __name__ == '__main__':
-    data_abs_path = '/Users/giga/Dev/USB/shipyard/ris/cranial/data/csv'
+    data_abs_path = '/home/giga/dev/python/shipyard/ris/cranial/data/csv'
     file_name = 'cranial_sentences_05312018_NEU.csv'
     csv_path = join(data_abs_path, file_name)
 
@@ -272,7 +294,7 @@ if __name__ == '__main__':
 
     run_test_models(
         csv_path,
-        min_row_count=8008,
+        min_row_count=1008,
         max_row_limit=8008,
         interval=1000,
         splits=10,

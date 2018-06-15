@@ -1,5 +1,5 @@
-import bedrock
-from sklearn.pipeline import make_pipeline
+import bedrock.viz
+import bedrock.common
 from sklearn.ensemble import ExtraTreesClassifier
 from sklearn.feature_selection import RFE
 from sklearn.naive_bayes import BernoulliNB
@@ -131,19 +131,19 @@ def tpot_models(X_train, X_test, y_train, y_test, target_column, persist_path=No
 
 def get_model_map():
     return {
-        'BernoulliNB': make_pipeline(
+        'BNB': make_pipeline(
             TfidfVectorizer(),
             BernoulliNB()
         ),
-        'LinearSVC': make_pipeline(
+        'SVM': make_pipeline(
             TfidfVectorizer(),
             LinearSVC(),
         ),
-        'RandomForestClassifier': make_pipeline(
+        'RFC': make_pipeline(
             TfidfVectorizer(),
             RandomForestClassifier()
         ),
-        'ExtraTreesClassifier': make_pipeline(
+        'EXT': make_pipeline(
             TfidfVectorizer(),
             ExtraTreesClassifier()
         )
@@ -176,14 +176,16 @@ def group_accuracy(estimator, X, y, groups):
     correct = df_agg['predicted', 'max'] == df_agg['y', 'max']
     return sum(correct)/len(correct)
 
-def group_accuracy_2(y, y_hat, groups):
-    df = pd.DataFrame({'y': y, 'y_hat': y_hat, 'group': groups})
+
+def group_accuracy_2(y_df, y_hat, groups_df):
+    df = pd.DataFrame({'y': y_df, 'y_hat': y_hat, 'group': groups_df[y_df.index]})
 
     f = {'y': ['max'], 'y_hat': ['max']}
     df_agg = df.groupby(['group']).agg(f)
 
     correct = df_agg['y', 'max'] == df_agg['y_hat', 'max']
     return sum(correct)/len(correct)
+
 
 def model_testing(
         x,
@@ -194,18 +196,16 @@ def model_testing(
         cv):
     # TODO: Trying to disable a warning that is out of my control
     import pandas as pd
+    from sklearn.metrics import make_scorer
+
+    gac = make_scorer(group_accuracy_2, groups_df=groups)
+
     pd.options.mode.chained_assignment = None
 
     model_map = get_model_map()
 
     all_models = model_map  # {**model_map, **tpot_pipelines}
-    from sklearn.metrics import fbeta_score, make_scorer
-    make_scorer(fbeta_score, beta=2)
 
-    gac = make_scorer(group_accuracy_2, groups=groups)
-
-    scoring = [gac] #'accuracy', 'f1', 'precision', 'recall',
-    # results = []
     res = {
         'label': [],
         'corpus_size': [],
@@ -221,13 +221,14 @@ def model_testing(
         'recall_mean': [],
         'f1_scores': [],
         'f1_mean': [],
-
+        'gac_scores': [],
+        'gac_mean': []
     }
 
     for key in all_models.keys():
         print(key)
         model = all_models[key]
-
+        scoring = ['accuracy', 'f1', 'precision', 'recall']
         cv_results = cross_validate(
             model,
             x,
@@ -237,9 +238,6 @@ def model_testing(
             return_train_score=False,
             groups=groups
         )
-
-        #cv_results = cross_val_score(model, x, y, cv=kfold, scoring=scoring)
-        # results.append(cv_results)
 
         res['label'].append(label_name)
         res['corpus_size'].append(corpus_size)
@@ -264,13 +262,54 @@ def model_testing(
         res['recall_scores'].append(list(precision_scores))
         res['recall_mean'].append(precision_scores.mean())
 
-        # msg = "%s: mean %f (std %f) [max: %f, min: %f]" % (
-        #     key, cv_results.mean(),
-        #     cv_results.std(),
-        #     cv_results.max(),
-        #     cv_results.min()
-        # )
-        # print(msg)
+        scoring = gac
+        cv_results = cross_validate(
+            model,
+            x,
+            y,
+            cv=cv,
+            scoring=scoring,
+            return_train_score=False,
+            groups=groups
+        )
+
+        res['gac_scores'].append(list(cv_results['test_score']))
+        res['gac_mean'].append(cv_results['test_score'].mean())
+
+    import pandas as pd
+    df = pd.DataFrame(res)
+
+    return df
+
+
+def accession_level_model_testing(x, y, cv, groups):
+    model_map = get_model_map()
+    all_models = model_map
+
+    from sklearn.metrics import make_scorer
+    res = {
+        'gac_scores': [],
+        'gac_mean': []
+    }
+
+    gac = make_scorer(group_accuracy_2, groups_df=groups)
+    scoring = gac
+    for key in all_models.keys():
+        print('gac' + key)
+        model = all_models[key]
+
+        cv_results = cross_validate(
+            model,
+            x,
+            y,
+            cv=cv,
+            scoring=scoring,
+            return_train_score=False,
+            groups=groups
+        )
+
+        res['gac_scores'].append(list(cv_results['test_score']))
+        res['gac_mean'].append(cv_results['test_score'].mean())
 
     import pandas as pd
     df = pd.DataFrame(res)
