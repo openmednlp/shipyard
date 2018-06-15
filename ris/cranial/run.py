@@ -2,6 +2,9 @@ from models import *
 from dataset import *
 from embeddings import *
 
+from sklearn.model_selection import GroupKFold
+from os.path import join
+
 target_columns = [
     'ICB',
     'fracture',
@@ -36,7 +39,7 @@ def spacy_stuff():
     ]
 
 
-from sklearn.model_selection import GroupKFold
+
 def run_test_models(csv_path, min_row_count, max_row_limit, interval, splits, repeats):
     import viz
     overall_result_df = pd.DataFrame()
@@ -89,17 +92,16 @@ import viz
 def vizardry():
     df = pd.read_csv('output/result.csv') #,  dtype={'accuracy_scores': np.})
     df['accuracy_scores'] = df['accuracy_scores'].astype(np.ndarray).apply(lambda x: eval(x))
-    df_group = df.groupby('model')
+    df_group = df.groupby(['model', 'label'])
     print(df_group)
     for name, g in df_group:
          viz.box_plot(
              g['corpus_size'].values,
              results=g['accuracy_scores'].values,
-             header=name,
-             show_plot=True,
-             persist=False
+             header='{}_{}'.format(*name),
+             show_plot=False,
+             persist=True
          )
-
 
 
 
@@ -134,99 +136,6 @@ def run_linear_svm(csv_path, row_limit):
     df_res.to_csv('output/linear_svm_predicted_result.csv')
 
 
-def cv_by_field(df, fold_count, field, reset_index=False):
-    from random import shuffle
-
-    if reset_index:
-        df = df.reset_index()
-
-    df_grouped = df.groupby(field)
-    distinct_field_values = list(df_grouped.groups.keys())
-
-    # group_max_targets = list(df_grouped[target_field].max())
-
-    shuffle(distinct_field_values)
-
-    field_value_folds = [
-        distinct_field_values[idx::fold_count]
-        for idx
-        in range(fold_count)
-    ]
-
-    index_folds = []
-    for fold in field_value_folds:
-        df_fold_indices = [
-            idx
-            for fv
-            in fold
-            for idx
-            in df[df[field] == fv].index.values
-        ]
-
-        index_folds.append(df_fold_indices)
-
-    train_fold_ids = []
-    test_fold_ids = []
-
-    for fold_test_idx in range(fold_count):
-        train_folds = [
-            idx
-            for fold_idx
-            in range(fold_count)
-            if fold_idx != fold_test_idx
-            for idx
-            in index_folds[fold_idx]
-        ]
-        train_fold_ids.append(np.ndarray(train_folds))
-
-        test_fold = [idx for idx in index_folds[fold_test_idx]]
-        test_fold_ids.append(np.ndarray(test_fold))
-
-    return train_fold_ids, test_fold_ids
-
-
-
-
-def run_linear_svm_doc_level(csv_path, row_limit):
-    df_all = csv_to_dataset(csv_path)
-    df_limited = limit_df(df_all, row_limit)
-    models = []
-
-
-    split_by_field  = 'accession_id'
-
-
-    import bedrock
-
-
-    df_res = df_all
-    for target_column, target_sections in zip(target_columns, target_sections_map):
-        print(':: ' + target_column + ' ::')
-
-        x, y, x_val, y_val = bedrock.collection.train_validate_split_df(
-            df_limited, 'sentence', target_column, 'accession_id', test_size=0.1
-        )
-
-        df_filtered = filter_df_by_sections(df, target_column, target_sections)
-        x = df_filtered['sentence']
-        y = df_filtered[target_column]
-
-        # Train model
-        linearsvm = get_model_map()['LinearSVC']
-        model = linearsvm.fit(x,y)
-        models.append(model)
-
-        # Predict
-        df_filtered = df_all[df_all['section_id'].isin(target_sections)]
-        df_filtered_mapped = map_label(df_filtered, target_column)
-
-        x_all = df_filtered_mapped['sentence']
-        y_hat = model.predict(x_all)
-
-        df_filtered_mapped['predicted_'+target_column] = y_hat
-        df_res = pd.concat([df_res, df_filtered_mapped['predicted_'+target_column]], axis=1)
-
-    df_res.to_csv('output/linear_svm_doc_level.csv')
 
 
 def run_document_lod(input_csv_path, output_csv_path='output/lod_doc.csv'):
@@ -352,24 +261,23 @@ class DataFrameCV(_BaseKFold):
             yield X.index.isin(test_index)
 
 
-
 if __name__ == '__main__':
-    data_abs_path = '/home/giga/dev/python/shipyard/ris/cranial/data/csv/'
+    data_abs_path = '/Users/giga/Dev/USB/shipyard/ris/cranial/data/csv'
     file_name = 'cranial_sentences_05312018_NEU.csv'
-    csv_path = data_abs_path + file_name
+    csv_path = join(data_abs_path, file_name)
 
 
     # run_classificators(df)
     # run_regex(df)
 
-    # run_test_models(
-    #     csv_path,
-    #     min_row_count=7008,
-    #     max_row_limit=8008,
-    #     interval=1000,
-    #     splits=10,
-    #     repeats=10
-    # )
+    run_test_models(
+        csv_path,
+        min_row_count=8008,
+        max_row_limit=8008,
+        interval=1000,
+        splits=10,
+        repeats=10
+    )
     vizardry()
 
     # run_linear_svm(csv_path, 8008)

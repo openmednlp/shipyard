@@ -30,13 +30,17 @@ def box_plot(names, results, header, show_plot=True, persist=False):
     ax = fig.add_subplot(111)
     plt.boxplot(results.tolist())
     ax.set_xticklabels(names)
-    plt.xlabel('Algorithms') #TODO: not generalized name
-    plt.xticks(rotation=45)
-    plt.ylim(0.6, 1.01)
+    plt.xlabel('Number of segments - ' + header) #TODO: not generalized name
+    plt.xticks(rotation=0)
+    y_min = min(results.min()) * 0.97  # 0.70
+    y_max = max(results.max()) * 1.03  # 1.01
+    plt.ylim(y_min, y_max)
     plt.tight_layout()
 
     if show_plot:
         plt.show()
 
-    plt.savefig('output/' + header.replace(' ', '_') + '.png')
+    if persist:
+        plt.savefig('output/' + header.replace(' ', '_') + '.png')
+
     plt.close()

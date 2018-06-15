@@ -155,9 +155,9 @@ class DataFrameScorer:
         # groups is a df column on which you want to group by
         self.groups = groups
 
-    def __call__(self, estimator, X, y, **kwargs):
+    def __call__(self, estimator, X, y):
         df = pd.DataFrame({'X': X, 'y': y, 'group': self.groups})
-        df['predicted'] = estimator.fit(X)
+        df['predicted'] = estimator.predict(X)
 
         f = {'predicted': ['max'], 'y': ['max']}
         df_agg = df.groupby(['group']).agg(f)
@@ -165,6 +165,25 @@ class DataFrameScorer:
         correct = df_agg['predicted', 'max'] == df_agg['y', 'max']
         return sum(correct)/len(correct)
 
+
+def group_accuracy(estimator, X, y, groups):
+    df = pd.DataFrame({'X': X, 'y': y, 'group': groups})
+    df['predicted'] = estimator.predict(X)
+
+    f = {'predicted': ['max'], 'y': ['max']}
+    df_agg = df.groupby(['group']).agg(f)
+
+    correct = df_agg['predicted', 'max'] == df_agg['y', 'max']
+    return sum(correct)/len(correct)
+
+def group_accuracy_2(y, y_hat, groups):
+    df = pd.DataFrame({'y': y, 'y_hat': y_hat, 'group': groups})
+
+    f = {'y': ['max'], 'y_hat': ['max']}
+    df_agg = df.groupby(['group']).agg(f)
+
+    correct = df_agg['y', 'max'] == df_agg['y_hat', 'max']
+    return sum(correct)/len(correct)
 
 def model_testing(
         x,
@@ -180,8 +199,12 @@ def model_testing(
     model_map = get_model_map()
 
     all_models = model_map  # {**model_map, **tpot_pipelines}
+    from sklearn.metrics import fbeta_score, make_scorer
+    make_scorer(fbeta_score, beta=2)
 
-    scoring = ['accuracy', 'f1', 'precision', 'recall']  # , DataFrameScorer(cv.df)]
+    gac = make_scorer(group_accuracy_2, groups=groups)
+
+    scoring = [gac] #'accuracy', 'f1', 'precision', 'recall',
     # results = []
     res = {
         'label': [],
