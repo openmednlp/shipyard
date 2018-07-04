@@ -105,7 +105,18 @@ def run_test_models(csv_path, min_row_count, max_row_limit, interval, splits, re
 import viz
 
 
-def vizardry(score_types=['accuracy_scores', 'f1_scores', 'gac_scores'], x_label='Number of segments', y_label=''):
+def vizardry(
+        score_types=['accuracy_scores', 'f1_scores', 'gac_scores'],
+        x_label='Number of segments',
+        y_label='',
+        plot_type=None):
+
+    label_dict = {
+        'accuracy_scores': 'Accuracy',
+        'f1_scores': 'F1',
+        'gac_scores': 'Report level accuracy'
+    }
+
     df = pd.read_csv('output/result.csv') #,  dtype={'accuracy_scores': np.})
 
     for score_type in score_types:
@@ -114,18 +125,34 @@ def vizardry(score_types=['accuracy_scores', 'f1_scores', 'gac_scores'], x_label
     df_group = df.groupby(['model', 'label'])
     print(df_group)
     for name, g in df_group:
-        for score_type in score_types:
-             viz.box_plot(
-                 g['corpus_size'].values,
-                 results=g[score_type].values,
-                 header='{}_{}_{}'.format(*name, score_type),
-                 show_plot=False,
-                 persist=True,
-                 x_label=x_label,
-                 y_label= y_label if y_label else score_type
-             )
-
-
+        if plot_type=='box':
+            for score_type in score_types:
+                 viz.box_plot(
+                     g['corpus_size'].values,
+                     results=g[score_type].values,
+                     header='{}_{}_{}'.format(*name, score_type),
+                     show_plot=False,
+                     persist=True,
+                     x_label=x_label,
+                     y_label= y_label if y_label else label_dict[score_type]
+                 )
+        elif plot_type == 'line':
+            results = [
+                g['accuracy_min'].values,
+                g['accuracy_max'].values,
+                g['accuracy_mean'].values
+            ]
+            viz.line_plot(
+                g['corpus_size'].values,
+                results=results,
+                header='{}_{}_{}'.format(*name, 'min_max_mean'),
+                show_plot=False,
+                persist=True,
+                x_label=x_label,
+                y_label='Accuracy'
+            )
+        else:
+            raise ValueError('Plot type cannot be ' + str(plot_type))
 
 def run_linear_svm(csv_path, row_limit):
     df_all = csv_to_dataset(csv_path)
@@ -292,15 +319,15 @@ if __name__ == '__main__':
     # run_classificators(df)
     # run_regex(df)
 
-    run_test_models(
-        csv_path,
-        min_row_count=1008,
-        max_row_limit=8008,
-        interval=1000,
-        splits=10,
-        repeats=10
-    )
-    vizardry()
+    # run_test_models(
+    #     csv_path,
+    #     min_row_count=1008,
+    #     max_row_limit=8008,
+    #     interval=1000,
+    #     splits=10,
+    #     repeats=10
+    # )
+    vizardry(plot_type='line')
 
     # run_linear_svm(csv_path, 8008)
     # run_document_lod('output/linear_svm_predicted_result.csv', 'output/lod_doc.csv')
