@@ -106,13 +106,13 @@ import viz
 
 
 def vizardry(
+        plot_type,
         score_types=['accuracy_scores', 'f1_scores', 'gac_scores'],
         x_label='Number of segments',
-        y_label='',
-        plot_type=None):
+        y_label=''):
 
     label_dict = {
-        'accuracy_scores': 'Accuracy',
+        'accuracy_scores': 'Segment level accuracy',
         'f1_scores': 'F1',
         'gac_scores': 'Report level accuracy'
     }
@@ -122,37 +122,124 @@ def vizardry(
     for score_type in score_types:
         df[score_type] = df[score_type].astype(np.ndarray).apply(lambda x: eval(x))
 
+    if plot_type == 'line_report_accuracy_comparison':
+        df_group = df.groupby(['label'])
+        print(df_group)
+
+        for label, scores in df_group:
+            grouped_scores = scores.groupby(['model'])
+            model_dict = {}
+
+            fields = ['corpus_size', 'accuracy_mean', 'gac_mean']
+            for model, scores in grouped_scores:
+                model_dict[model] = scores[fields].sort_values('corpus_size')
+
+            print(label, model_dict, sep=': ')
+
+            model_names = list(model_dict.keys())
+            x = model_dict[model_names[0]]['corpus_size']
+            ys = [model_dict[key]['accuracy_mean'] for key in model_names]
+
+            # Segment level
+            viz.line_plots(
+                x,
+                ys,
+                model_names,
+                label,
+                False,
+                True,
+                'Corpus size',
+                'Mean segment level accuracy',
+                'line_comparison_segment'
+            )
+
+            # Report level
+            ys = [model_dict[key]['gac_mean'] for key in model_names]
+            viz.line_plots(
+                x,
+                ys,
+                model_names,
+                label,
+                False,
+                True,
+                'Corpus size',
+                'Mean report level accuracy',
+                'line_comparison_report'
+            )
+
+        return
+
     df_group = df.groupby(['model', 'label'])
     print(df_group)
-    for name, g in df_group:
-        if plot_type=='box':
+
+    for alg_label_pair, pair_scores in df_group:
+        algorithm_name, label_name = alg_label_pair
+        if plot_type == 'box':
             for score_type in score_types:
-                 viz.box_plot(
-                     g['corpus_size'].values,
-                     results=g[score_type].values,
-                     header='{}_{}_{}'.format(*name, score_type),
+                header = '{}_{}_{}'.format(
+                    algorithm_name,
+                    label_name,
+                    score_type
+                )
+                viz.box_plot(
+                     pair_scores['corpus_size'].values,
+                     results=pair_scores[score_type].values,
+                     header=header,
                      show_plot=False,
                      persist=True,
                      x_label=x_label,
-                     y_label= y_label if y_label else label_dict[score_type]
+                     y_label= y_label if y_label else label_dict[score_type],
+                     save_dir_name=plot_type
                  )
-        elif plot_type == 'line':
+        elif plot_type == 'line_segment_accuracy':
             results = [
-                g['accuracy_min'].values,
-                g['accuracy_max'].values,
-                g['accuracy_mean'].values
+                pair_scores['accuracy_min'].values,
+                pair_scores['accuracy_max'].values,
+                pair_scores['accuracy_mean'].values
             ]
+
+            header = '{}_{}_{}'.format(
+                algorithm_name,
+                label_name,
+                'accuracy_min_max_mean'
+            )
+
             viz.line_plot(
-                g['corpus_size'].values,
+                pair_scores['corpus_size'].values,
                 results=results,
-                header='{}_{}_{}'.format(*name, 'min_max_mean'),
+                header=header,
                 show_plot=False,
                 persist=True,
                 x_label=x_label,
-                y_label='Accuracy'
+                y_label='Segment level accuracy',
+                save_dir_name=plot_type
+            )
+        elif plot_type == 'line_report_accuracy':
+            results = [
+                pair_scores['gac_scores'].apply(min),
+                pair_scores['gac_scores'].apply(max),
+                pair_scores['gac_mean'].values
+            ]
+
+            header = '{}_{}_{}'.format(
+                algorithm_name,
+                label_name,
+                'report_accuracy_min_max_mean'
+            )
+
+            viz.line_plot(
+                pair_scores['corpus_size'].values,
+                results=results,
+                header=header,
+                show_plot=False,
+                persist=True,
+                x_label=x_label,
+                y_label='Report level accuracy',
+                save_dir_name=plot_type
             )
         else:
             raise ValueError('Plot type cannot be ' + str(plot_type))
+
 
 def run_linear_svm(csv_path, row_limit):
     df_all = csv_to_dataset(csv_path)
@@ -327,7 +414,12 @@ if __name__ == '__main__':
     #     splits=10,
     #     repeats=10
     # )
-    vizardry(plot_type='line')
+
+    vizardry(plot_type='line_report_accuracy_comparison')
+    #vizardry(plot_type='box')
+    # vizardry(plot_type='line_report_accuracy')
+    # vizardry(plot_type='line_segment_accuracy')
+
 
     # run_linear_svm(csv_path, 8008)
     # run_document_lod('output/linear_svm_predicted_result.csv', 'output/lod_doc.csv')
