@@ -2,7 +2,7 @@ import bedrock.viz
 import bedrock.common
 from sklearn.ensemble import ExtraTreesClassifier
 from sklearn.feature_selection import RFE
-from sklearn.naive_bayes import BernoulliNB
+from sklearn.naive_bayes import BernoulliNB, MultinomialNB
 from tpot import TPOTClassifier
 from sklearn.svm import LinearSVC
 from sklearn.feature_selection import SelectFwe, f_classif
@@ -133,7 +133,7 @@ def get_model_map():
     return {
         'BNB': make_pipeline(
             TfidfVectorizer(),
-            BernoulliNB()
+            MultinomialNB()
         ),
         'SVM': make_pipeline(
             TfidfVectorizer(),

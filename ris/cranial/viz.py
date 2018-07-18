@@ -36,7 +36,7 @@ def box_plot(
     # boxplot algorithm comparison
     fig = plt.figure()
     ax = fig.add_subplot(111)
-    plt.boxplot(results.tolist(), showfliers=False)
+    plt.boxplot(results, showfliers=False)
     ax.set_xticklabels(names)
     plt.ylabel(y_label)
     plt.xlabel(x_label) #TODO: not generalized name

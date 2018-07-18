@@ -39,7 +39,6 @@ def spacy_stuff():
     ]
 
 
-
 def run_test_models(csv_path, min_row_count, max_row_limit, interval, splits, repeats):
     import viz
     overall_result_df = pd.DataFrame()
@@ -122,7 +121,7 @@ def vizardry(
     for score_type in score_types:
         df[score_type] = df[score_type].astype(np.ndarray).apply(lambda x: eval(x))
 
-    if plot_type == 'line_report_accuracy_comparison':
+    if 'accuracy_comparison' in plot_type:
         df_group = df.groupby(['label'])
         print(df_group)
 
@@ -130,7 +129,14 @@ def vizardry(
             grouped_scores = scores.groupby(['model'])
             model_dict = {}
 
-            fields = ['corpus_size', 'accuracy_mean', 'gac_mean']
+            fields = [
+                'corpus_size',
+                'accuracy_mean',
+                'gac_mean',
+                'accuracy_scores',
+                'gac_scores'
+            ]
+
             for model, scores in grouped_scores:
                 model_dict[model] = scores[fields].sort_values('corpus_size')
 
@@ -138,35 +144,62 @@ def vizardry(
 
             model_names = list(model_dict.keys())
             x = model_dict[model_names[0]]['corpus_size']
-            ys = [model_dict[key]['accuracy_mean'] for key in model_names]
 
             # Segment level
-            viz.line_plots(
-                x,
-                ys,
-                model_names,
-                label,
-                False,
-                True,
-                'Corpus size',
-                'Mean segment level accuracy',
-                'line_comparison_segment'
-            )
+            if 'line' in plot_type:
+                ys = [model_dict[key]['accuracy_mean'] for key in model_names]
+                viz.line_plots(
+                    x,
+                    ys,
+                    model_names,
+                    label,
+                    False,
+                    True,
+                    'Corpus size',
+                    'Mean segment level accuracy',
+                    'line_comparison_segment'
+                )
+            elif 'box' in plot_type:
+                ys = [model_dict[key]['accuracy_scores'] for key in model_names]
+                for corpus_id in range(len(x)):
+                    viz.box_plot(
+                        names=model_names,
+                        results=[ys_per_corpus.iloc[corpus_id] for ys_per_corpus in ys],
+                        header='box comparison segment {}'.format(x.iloc[corpus_id]),
+                        show_plot=False,
+                        persist=True,
+                        x_label='Corpus size',
+                        y_label='Segment level accuracy',
+                        save_dir_name='box_segment_comparison'
+                    )
 
             # Report level
-            ys = [model_dict[key]['gac_mean'] for key in model_names]
-            viz.line_plots(
-                x,
-                ys,
-                model_names,
-                label,
-                False,
-                True,
-                'Corpus size',
-                'Mean report level accuracy',
-                'line_comparison_report'
-            )
-
+            if 'line' in plot_type:
+                ys = [model_dict[key]['gac_mean'] for key in model_names]
+                viz.line_plots(
+                    x,
+                    ys,
+                    model_names,
+                    label,
+                    False,
+                    True,
+                    'Corpus size',
+                    'Mean report level accuracy',
+                    'line_comparison_report'
+                )
+            elif 'box' in plot_type:
+                ys = [model_dict[key]['gac_scores'] for key in model_names]
+                for corpus_id in range(len(x)):
+                    viz.box_plot(
+                        names=model_names,
+                        results=[ys_per_corpus.iloc[corpus_id] for ys_per_corpus in ys],
+                        header='box comparison report {}'.format(x.iloc[corpus_id]),
+                        show_plot=False,
+                        persist=True,
+                        x_label='Corpus size',
+                        y_label='Report level accuracy',
+                        save_dir_name='box_report_comparison'
+                    )
         return
 
     df_group = df.groupby(['model', 'label'])
@@ -174,6 +207,7 @@ def vizardry(
 
     for alg_label_pair, pair_scores in df_group:
         algorithm_name, label_name = alg_label_pair
+
         if plot_type == 'box':
             for score_type in score_types:
                 header = '{}_{}_{}'.format(
@@ -255,8 +289,8 @@ def run_linear_svm(csv_path, row_limit):
         y = df_filtered[target_column]
 
         # Train model
-        linearsvm = get_model_map()['LinearSVC']
-        model = linearsvm.fit(x,y)
+        linearsvm = get_model_map()['SVM']
+        model = linearsvm.fit(x, y)
         models.append(model)
 
         # Predict
@@ -269,9 +303,8 @@ def run_linear_svm(csv_path, row_limit):
         df_filtered_mapped['predicted_'+target_column] = y_hat
         df_res = pd.concat([df_res, df_filtered_mapped['predicted_'+target_column]], axis=1)
 
-    df_res.to_csv('output/linear_svm_predicted_result.csv')
-
-
+    file_name = 'linear_svm_predicted_result.csv'
+    df_res.to_csv('output/' + file_name)
 
 
 def run_document_lod(input_csv_path, output_csv_path='output/lod_doc.csv'):
@@ -397,6 +430,221 @@ class DataFrameCV(_BaseKFold):
             yield X.index.isin(test_index)
 
 
+def calculate_p_value(
+        calculated_values_path='/home/giga/dev/python/shipyard/ris/cranial/output/linear_svm_predicted_result.csv',
+        patient_list_file_path='/home/giga/dev/python/shipyard/ris/cranial/data/csv/patientlist_07152018.xlsx',
+        tab_name='Tabelle1'):
+
+    patient_list_df = pd.read_excel(
+        patient_list_file_path,
+        tab_name,
+        usecols='C,I,J,K,L,M'
+    )
+    accession_numbers = patient_list_df['accession number']
+
+    patient_list_df.rename(
+        index=str,
+        columns={
+            'accession number': 'accession_id',
+            'intracranial bleeding in Beurteilung; 0=not mentioned; 1=no; 5=yes': 'ICB',
+            'fracture in Beurteilung': 'fracture',
+            'Liquorzirkulation in Befund/Beurteilung': 'hydrocephalus',
+            '       midline in Befund/Beurteilung': 'midline',
+            'vessels in Befund/Beurteilung': 'vessels'
+        },
+        inplace=True
+    )
+
+    print(patient_list_df.sample(1))
+
+    fields = [
+        'accession_id',
+        'ICB',
+        'fracture',
+        'hydrocephalus',
+        'midline',
+        'vessels'
+    ]
+    patient_list_columns_df = patient_list_df[fields]
+
+    patient_list_positive_count = patient_list_columns_df.astype(bool).sum(axis=0)
+    patient_list_count = patient_list_columns_df.count()
+
+    predicted_df = pd.read_csv(calculated_values_path, low_memory=False)
+    predicted_fields = [
+        'accession_id',
+        'predicted_ICB',
+        'predicted_fracture',
+        'predicted_hydrocephalus',
+        'predicted_midline',
+        'predicted_vessels'
+    ]
+    predicted_columns_df = predicted_df[predicted_fields]
+
+    rename_dict=dict(zip(predicted_fields, fields))
+    predicted_columns_df.rename(
+        index=str,
+        columns=rename_dict,
+        inplace=True
+    )
+
+    predicted_columns_df.loc[:, 'accession_id'] = predicted_columns_df['accession_id'].apply(lambda x: int(x[:-4]))
+
+    predicted_for_patients_df = predicted_columns_df[
+        predicted_columns_df['accession_id'].isin(list(accession_numbers))
+    ]
+
+    predicted_for_patients_no_nan_df = predicted_for_patients_df.fillna(0)
+
+    predicted_grouped = predicted_for_patients_no_nan_df.groupby('accession_id').agg('max')
+    predicted_sum = predicted_grouped.sum().apply(int)
+    predicted_count = predicted_grouped.count().apply(int)
+    print(
+        'predicted sum:\n{}\n predicted count:\n{}\n'.format(
+            predicted_sum,
+            predicted_count
+        )
+    )
+
+    all_grouped = predicted_columns_df.groupby('accession_id').agg('max')
+    all_sum = all_grouped.sum().apply(int)
+    all_count = all_grouped.count().apply(int)
+    print(
+        'all sum:\n{}\n all count:\n{}\n'.format(
+            all_sum,
+            all_count
+        )
+    )
+
+    missing_data = accession_numbers[~accession_numbers.isin(predicted_for_patients_df['accession_id'])]
+    print('The missing data for:\n', missing_data)
+
+    from scipy.stats import chisquare
+
+    # positive_f_obs = predicted_sum[0] / predicted_count[0]
+    # negative_f_obs = 1 - positive_obs
+    #
+    # positive_f_exp = all_sum[0] / all_count[0]
+    # negative_f_exp = 1 - positive_f_exp
+
+
+
+    p_value_info = {
+        'label': [],
+        'observed present': [],
+        'observed not present': [],
+        'observed all': [],
+        'expected present': [],
+        'expected not present': [],
+        'total expected present': [],
+        'total expected not present': [],
+        'total expected': [],
+        'critical value': [],
+        'p-value': [],
+        'difference present': [],
+        'abs difference present': [],
+        'difference not present': [],
+        'abs difference not present': [],
+        'p<=0.10': [],
+        'p<=0.05': [],
+        'p<=0.005': []
+
+    }
+
+    p_value_paper = {
+        'label': [],
+        'p_man_vs_all_aut': [],
+        'p_man_vs_sample_aut': [],
+        'critical_man_vs_all_aut': [],
+        'critical_man_vs_sample_aut': [],
+    }
+
+    print('patient_list_positive_count\n', patient_list_positive_count)
+
+    for idx in fields[1:]:
+        sample_aut_positive = predicted_sum[idx]
+        sample_aut_negative = predicted_count[idx] - sample_aut_positive
+
+        expected_positive = predicted_count[idx] * all_sum[idx]/all_count[idx]
+        expected_negative = predicted_count[idx] - expected_positive
+
+        p = chisquare(
+            f_obs=[sample_aut_positive, sample_aut_negative],
+            f_exp=[expected_positive, expected_negative]  # [positive_f_exp, negative_f_exp]
+        )
+
+        p_value_info['label'].append(idx)
+        p_value_info['observed present'].append(predicted_sum[idx])
+
+        observed_not_present = predicted_count[idx] - predicted_sum[idx]
+        p_value_info['observed not present'].append(observed_not_present)
+        p_value_info['observed all'].append(predicted_count[idx])
+        p_value_info['expected present'].append(expected_positive)
+        p_value_info['expected not present'].append(expected_negative)
+        p_value_info['total expected present'].append(all_sum[idx])
+        p_value_info['total expected not present'].append(all_count[idx] - all_sum[idx])
+        p_value_info['total expected'].append(all_count[idx])
+        p_value_info['critical value'].append(p[0])
+        p_value_info['p-value'].append(p[1])
+
+        diff_present = expected_positive - predicted_sum[idx]
+        p_value_info['difference present'].append(diff_present)
+        p_value_info['abs difference present'].append(abs(diff_present))
+
+        diff_not_present = expected_negative - observed_not_present
+        p_value_info['difference not present'].append(diff_not_present)
+        p_value_info['abs difference not present'].append(abs(diff_not_present))
+
+        p_value_info['p<=0.10'].append('reject' if p[1] <= 0.1 else 'fail to reject')
+        p_value_info['p<=0.05'].append('reject' if p[1] <= 0.05 else 'fail to reject')
+        p_value_info['p<=0.005'].append('reject' if p[1] <= 0.005 else 'fail to reject')
+
+        print(
+            (
+                '-------------------\n'
+                'idx:\t{}\n'
+                'present:\t{}\n'
+                'expected present:\t{}\n'
+                'p-value:\t{:3f}\n'
+                'total\t{}'
+            ).format(
+                idx,
+                predicted_sum[idx],
+                expected_positive,
+                p[1],
+                predicted_count[idx]
+            )
+        )
+
+        print(p)
+
+        manual_positive = patient_list_positive_count[idx]
+        manual_negative = patient_list_count[idx] - manual_positive
+
+        p_value_paper['label'].append(idx)
+        p_man_vs_all_aut = chisquare(
+            f_obs=[manual_positive, manual_negative],
+            f_exp=[expected_positive, expected_negative]
+        )
+        p_value_paper['p_man_vs_all_aut'].append(p_man_vs_all_aut[1])
+        p_value_paper['critical_man_vs_all_aut'].append(p_man_vs_all_aut[0])
+
+
+        p_man_vs_sample_aut = chisquare(
+            f_obs=[manual_positive, manual_negative],
+            f_exp=[sample_aut_positive, sample_aut_negative]
+        )
+        p_value_paper['p_man_vs_sample_aut'].append(p_man_vs_sample_aut[1])
+        p_value_paper['critical_man_vs_sample_aut'].append(p_man_vs_sample_aut[0])
+
+
+    p_df = pd.DataFrame(p_value_info)
+    p_df.to_csv('output/p_value.csv')
+
+    print(p_value_paper)
+    p_paper_df = pd.DataFrame(p_value_paper)
+    p_paper_df.to_csv('output/p_value_paper.csv', float_format='%.10f')
+
 if __name__ == '__main__':
     data_abs_path = '/home/giga/dev/python/shipyard/ris/cranial/data/csv'
     file_name = 'cranial_sentences_05312018_NEU.csv'
@@ -415,8 +663,12 @@ if __name__ == '__main__':
     #     repeats=10
     # )
 
-    vizardry(plot_type='line_report_accuracy_comparison')
-    #vizardry(plot_type='box')
+    # calculate_p_value()
+
+    # vizardry(plot_type='line_accuracy_comparison')
+    vizardry(plot_type='box_accuracy_comparison')
+
+    # vizardry(plot_type='box')
     # vizardry(plot_type='line_report_accuracy')
     # vizardry(plot_type='line_segment_accuracy')
 
