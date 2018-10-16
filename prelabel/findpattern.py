@@ -14,3 +14,4 @@ def findpattern(regex, text):
             vec.append(indices)
             match.append(el.group())
             string = string + text[indices[0]:indices[1]] + ', '
+    return vec, match
